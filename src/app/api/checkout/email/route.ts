@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(req: Request) {
+    // Initialize inside the function to avoid errors during static site generation
+    // Provide a fallback 're_placeholder' so Resend doesn't throw if the environment variable is missing during build time.
+    const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder');
+
     try {
         const body = await req.json();
         const { email, name, total, date, items } = body;
