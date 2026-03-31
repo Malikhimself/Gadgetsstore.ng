@@ -2,11 +2,60 @@
 
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
-import { usePaystackPayment } from "react-paystack";
 import { useAuth } from "@/context/AuthContext";
+
+// ---------------------------------------------------------------------------
+// Custom Paystack hook — replaces react-paystack (incompatible with React 19)
+// Loads the official Paystack Inline JS from CDN at runtime.
+// ---------------------------------------------------------------------------
+interface PaystackConfig {
+  reference: string;
+  email: string;
+  amount: number;
+  publicKey: string;
+}
+interface PaystackHandlers {
+  onSuccess: (reference: unknown) => void;
+  onClose: () => void;
+}
+declare global {
+  interface Window {
+    PaystackPop?: {
+      setup: (config: PaystackConfig & PaystackHandlers & { key: string }) => { openIframe: () => void };
+    };
+  }
+}
+function usePaystackPayment(config: PaystackConfig) {
+  useEffect(() => {
+    if (document.getElementById("paystack-inline-script")) return;
+    const script = document.createElement("script");
+    script.id = "paystack-inline-script";
+    script.src = "https://js.paystack.co/v1/inline.js";
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
+  return useCallback(
+    (handlers: PaystackHandlers) => {
+      if (!window.PaystackPop) {
+        console.error("Paystack script not loaded yet.");
+        return;
+      }
+      const handler = window.PaystackPop.setup({
+        key: config.publicKey,
+        ...config,
+        ...handlers,
+      });
+      handler.openIframe();
+    },
+    [config]
+  );
+}
+// ---------------------------------------------------------------------------
+
 
 export default function CheckoutPage() {
     const [step, setStep] = useState(1); // 1: Info, 2: Payment, 3: Success
@@ -28,6 +77,7 @@ export default function CheckoutPage() {
         publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_placeholder",
     };
 
+    const initializePaystack = usePaystackPayment(paystackConfig);
     const sendConfirmationEmail = async () => {
         try {
             await fetch('/api/checkout/email', {
