@@ -1,15 +1,45 @@
 import { Search, MoreHorizontal, UserCircle2 } from "lucide-react";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const customers = [
-    { id: "CUST-10A", name: "Chioma Adebayo", email: "chioma@example.com", joined: "Jan 12, 2026", orders: 4, spent: 1200000, status: "Active" },
-    { id: "CUST-10B", name: "Emeka Okafor", email: "emeka.ok@test.ng", joined: "Feb 05, 2026", orders: 2, spent: 2500000, status: "Active" },
-    { id: "CUST-10C", name: "Aisha Mohammed", email: "aisha.m@outlook.ng", joined: "Mar 10, 2026", orders: 1, spent: 680000, status: "Inactive" }
-];
+export const revalidate = 0;
 
-export default function AdminCustomersPage() {
+export default async function AdminCustomersPage() {
+    const [ { data: dbProfiles }, { data: dbOrders } ] = await Promise.all([
+        supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabaseAdmin.from('orders').select('user_id, total, status')
+    ]);
+
+    const allProfiles = dbProfiles || [];
+    const allOrders = dbOrders || [];
+
+    const customers = allProfiles.map(profile => {
+        const userOrders = allOrders.filter(o => o.user_id === profile.id);
+        const totalSpent = userOrders.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+        const parsedDate = new Date(profile.created_at).toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric'
+        });
+        
+        return {
+            id: profile.id,
+            name: profile.name || 'Guest User',
+            email: profile.email || 'N/A',
+            joined: parsedDate,
+            orders: userOrders.length,
+            spent: totalSpent,
+            status: userOrders.length > 0 ? "Active" : "New User"
+        };
+    });
+
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-white">Customers</h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <h1 className="text-3xl font-bold text-white">Customers</h1>
+                {!process.env.SUPABASE_SERVICE_ROLE_KEY && (
+                    <div className="px-4 py-2 bg-red-500/10 border border-red-500/50 text-red-500 text-sm rounded-lg font-medium">
+                        Missing SUPABASE_SERVICE_ROLE_KEY. Data cannot sync correctly.
+                    </div>
+                )}
+            </div>
 
             <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
                 <div className="flex items-center gap-4 mb-6">
@@ -36,16 +66,16 @@ export default function AdminCustomersPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {customers.map((customer) => (
+                            {customers.length > 0 ? customers.map((customer) => (
                                 <tr key={customer.id} className="group hover:bg-white/5 transition-colors">
                                     <td className="py-4 pl-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent">
+                                            <div className="w-10 h-10 shrink-0 rounded-full bg-accent/20 flex items-center justify-center text-accent">
                                                 <UserCircle2 className="w-6 h-6" />
                                             </div>
-                                            <div>
-                                                <p className="font-medium text-white">{customer.name}</p>
-                                                <p className="text-sm text-neutral-400">{customer.email}</p>
+                                            <div className="min-w-0">
+                                                <p className="font-medium text-white truncate max-w-[200px]">{customer.name}</p>
+                                                <p className="text-sm text-neutral-400 truncate max-w-[200px]">{customer.email}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -53,7 +83,7 @@ export default function AdminCustomersPage() {
                                     <td className="py-4 text-white font-medium">{customer.orders}</td>
                                     <td className="py-4 text-white font-bold">₦{customer.spent.toLocaleString()}</td>
                                     <td className="py-4">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+                                        <span className={`px-2 py-1 flex items-center justify-center w-fit min-w-20 rounded-full text-xs font-medium border ${
                                             customer.status === 'Active' ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/20' : 
                                             'bg-neutral-500/20 text-neutral-400 border-neutral-500/20'
                                         }`}>
@@ -66,7 +96,13 @@ export default function AdminCustomersPage() {
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            )) : (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-neutral-500">
+                                        No registered customers found.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
